@@ -1,0 +1,58 @@
+name: Publish Qwen3.5-4B-Base weight chunks
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Hugging Face commit SHA or branch (resolved to immutable SHA)
+        required: true
+        default: main
+      tag:
+        description: Release tag name
+        required: true
+        default: qwen3.5-4b-base-v1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: model-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: python -m pip install --disable-pip-version-check 'huggingface_hub>=0.30,<2' 'requests>=2.32,<3'
+
+      - name: Check streaming package code
+        run: python -m unittest discover -s tests -v
+
+      - name: Download, package and hash model as release chunks
+        run: |
+          python scripts/stream_release.py \
+            --revision "${{ inputs.revision }}" \
+            --out dist \
+            --chunk-mib 1024
+          du -sh dist
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to overwrite it." >&2
+            exit 1
+          fi
+          gh release create "$TAG" dist/manifest.json dist/weights.zip.part* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title 'Qwen3.5-4B-Base model weight mirror' \
+            --notes 'Mirror of Qwen/Qwen3.5-4B-Base. Original model and license: https://huggingface.co/Qwen/Qwen3.5-4B-Base. See manifest.json for the pinned revision and SHA-256 hashes.'
