@@ -30,31 +30,20 @@ gh release create qwen3.5-4b-base-v1 dist/manifest.json dist/*.part* \
 
 **Do not commit weights or chunks to Git history.** A release is required before the download command works.
 
-## Kev-8B: base + adapter mirrors
+## Kev-4B adapter mirror
 
-Kev-8B requires **two separate downloads**:
+Kev-4B uses the already-published Qwen3.5-4B-Base **plus** the small adapter and decision head from [jaredpalmer/kev-4b](https://huggingface.co/jaredpalmer/kev-4b). The upstream Kev 1.0 adapter revision is `139fdd94`, with recommended base revision `1001bb4d`. Check the Qwen release manifest's `revision` if you need exact reproducibility.
 
-| Release tag | Upstream | Required for Kev-8B |
-|---|---|---|
-| `kev-8b-base-v1` | [Qwen/Qwen3-8B-Base](https://huggingface.co/Qwen/Qwen3-8B-Base), pinned to Kev's `49e3418f` revision | Yes |
-| `kev-8b-adapter-v1` | [jaredpalmer/kev-8b](https://huggingface.co/jaredpalmer/kev-8b) | Yes |
+To publish the adapter, open [Publish Kev-4B adapter weights](https://github.com/caderea/qwen3.5-4b-weights/actions/workflows/publish-kev-4b.yml), click **Run workflow**, and keep the default revision. The workflow creates a draft Release, uploads integrity-checked chunks, then makes it public on successful completion.
 
-**To publish:** Open [Publish Kev-8B model weights](https://github.com/caderea/qwen3.5-4b-weights/actions/workflows/publish-kev-8b.yml), select **Run workflow**, and select `base`. When that run succeeds, repeat with `adapter`. This workflow streams uploads chunk-by-chunk, deleting the chunk after successful upload, to reduce runner disk consumption. The release is created as a draft and published after every chunk and the manifest have uploaded.
-
-**On other computers, after the releases exist:**
+Once the `kev-4b-adapter-v1` Release exists, another computer can download both:
 
 ```bash
-git clone https://github.com/caderea/qwen3.5-4b-weights.git
-cd qwen3.5-4b-weights
-python3 scripts/weights.py download --tag kev-8b-base-v1 --out ./models/Qwen3-8B-Base
-python3 scripts/weights.py download --tag kev-8b-adapter-v1 --out ./models/kev-8b
+python3 scripts/weights.py download --tag qwen3.5-4b-base-v1 --out ./models/Qwen3.5-4B-Base
+python3 scripts/weights.py download --tag kev-4b-adapter-v1 --out ./models/kev-4b
 ```
 
-The `download` subcommand needs only Python 3 standard library, not `hf` or `torch`. Running Kev-8B requires the Kev runtime and dependencies separately.
-
-**Disk space:** The downloader retains part files in a shared cache and temporarily builds a full ZIP during restoration. Budget ample free disk space (well beyond the uncompressed weights), or change `--cache` to another disk. The streamer is optimized for the publishing runner, not the receiving machine.
-
-**Licensing:** Both upstream repositories indicate Apache-2.0. Preserve included license and attribution notices; each release includes the upstream model's files without weight modifications.
+Downloading needs Python 3 only. Running Kev itself requires the Kev runtime and its dependencies. The adapter is not a standalone 4B model.
 
 ## On another computer
 
