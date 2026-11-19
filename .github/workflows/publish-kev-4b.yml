@@ -1,0 +1,57 @@
+name: Publish Kev-4B adapter weights
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: Kev-4B upstream revision (pinned Kev 1.0 by default)
+        required: true
+        default: 139fdd94
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kev-4b-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install packaging dependencies
+        run: python -m pip install --disable-pip-version-check 'huggingface_hub>=0.30,<2' 'requests>=2.32,<3'
+      - name: Run packaging tests
+        run: python -m unittest discover -s tests -v
+      - name: Create draft Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: kev-4b-adapter-v1
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to overwrite." >&2
+            exit 1
+          fi
+          gh release create "$TAG" --draft \
+            --target "$GITHUB_SHA" --repo "$GITHUB_REPOSITORY" \
+            --title 'Kev-4B LoRA adapter and decision head' \
+            --notes 'Mirror of https://huggingface.co/jaredpalmer/kev-4b (Kev 1.0). Base model Qwen3.5-4B-Base is distributed separately. See manifest for the pinned upstream revision and SHA256 hashes.'
+      - name: Stream adapter files to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ inputs.revision }}
+        run: |
+          python scripts/stream_release.py \
+            --repo jaredpalmer/kev-4b \
+            --revision "$REVISION" \
+            --out dist --chunk-mib 1024 \
+            --release-tag kev-4b-adapter-v1
+      - name: Publish complete Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit kev-4b-adapter-v1 --draft=false --repo "$GITHUB_REPOSITORY"
