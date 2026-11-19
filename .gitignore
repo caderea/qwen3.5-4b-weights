@@ -1,0 +1,12 @@
+models/
+dist/
+.qwen-parts/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.gguf
+*.zip
+*.part[0-9][0-9][0-9][0-9]
+__pycache__/
+*.pyc
