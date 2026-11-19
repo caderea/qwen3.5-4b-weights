@@ -4,13 +4,16 @@ import argparse
 import hashlib
 import io
 import json
+import os
+import subprocess
 from pathlib import Path
 import zipfile
 
 
 class ChunkWriter(io.RawIOBase):
-    def __init__(self, out, chunk_bytes):
+    def __init__(self, out, chunk_bytes, on_part=None):
         self.out = Path(out)
+        self.on_part = on_part
         self.limit = chunk_bytes
         self.total = 0
         self.parts = []
@@ -37,8 +40,11 @@ class ChunkWriter(io.RawIOBase):
         if self.current is None:
             return
         self.current.close()
-        self.parts.append({"name": self.current_name, "size": self.part_size,
-                           "sha256": self.part_hash.hexdigest()})
+        item = {"name": self.current_name, "size": self.part_size,
+                "sha256": self.part_hash.hexdigest()}
+        if self.on_part:
+            self.on_part(self.out / self.current_name)
+        self.parts.append(item)
         self.current = None
 
     def write(self, b):
@@ -71,13 +77,13 @@ class ChunkWriter(io.RawIOBase):
         self.finalized = True
 
 
-def build_archive(entries, stream_file, out, chunk_mib=1024):
+def build_archive(entries, stream_file, out, chunk_mib=1024, on_part=None, source='Qwen/Qwen3.5-4B-Base'):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     limit = chunk_mib * 1024 * 1024
     if not 0 < limit < 2 * 1024**3:
         raise ValueError("Chunk size must be below 2 GiB")
-    writer = ChunkWriter(out, limit)
+    writer = ChunkWriter(out, limit, on_part=on_part)
     records = []
     with zipfile.ZipFile(writer, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
         for entry in entries:
@@ -101,7 +107,7 @@ def build_archive(entries, stream_file, out, chunk_mib=1024):
             records.append({"path": path, "size": size, "sha256": sha.hexdigest()})
             print(f"Packaged {path} ({size} bytes)", flush=True)
     writer.finalize()
-    return {"format": 1, "source": "Qwen/Qwen3.5-4B-Base",
+    return {"format": 1, "source": source,
             "archive": {"name": "weights.zip", "size": writer.total,
                         "sha256": writer.archive_hash.hexdigest()},
             "files": records, "parts": writer.parts}
@@ -113,6 +119,7 @@ def main():
     parser.add_argument("--revision", default="main")
     parser.add_argument("--out", default="dist")
     parser.add_argument("--chunk-mib", type=int, default=1024)
+    parser.add_argument("--release-tag", help="Upload chunks to draft release, deleting local copies")
     args = parser.parse_args()
     from huggingface_hub import HfApi, hf_hub_url
     import requests
@@ -143,9 +150,21 @@ def main():
             response.raise_for_status()
             yield from (b for b in response.iter_content(4 * 1024 * 1024) if b)
 
-    manifest = build_archive(entries, stream, args.out, args.chunk_mib)
+    def upload_part(part):
+        print(f"Uploading {part.name} to release {args.release_tag}", flush=True)
+        subprocess.run(["gh", "release", "upload", args.release_tag, str(part),
+                        "--repo", os.environ["GITHUB_REPOSITORY"]], check=True)
+        part.unlink()
+
+    manifest = build_archive(entries, stream, args.out, args.chunk_mib,
+                             on_part=upload_part if args.release_tag else None,
+                             source=args.repo)
     manifest["revision"] = revision
     (Path(args.out) / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    if args.release_tag:
+        subprocess.run(["gh", "release", "upload", args.release_tag,
+                        str(Path(args.out) / "manifest.json"),
+                        "--repo", os.environ["GITHUB_REPOSITORY"]], check=True)
     print(f"Wrote {len(manifest['parts'])} chunks; total {manifest['archive']['size']} bytes", flush=True)
 
 
