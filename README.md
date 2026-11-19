@@ -4,26 +4,31 @@ Tools for packaging and distributing the unmodified [Qwen/Qwen3.5-4B-Base](https
 
 > **Status:** The scripts are provided here. **No model weights have been uploaded to Releases yet.** Until a release is published, the `download` command has nothing to retrieve.
 
-## For the publisher
+## Publish without using local disk (recommended)
 
-Prerequisites: Python 3.10+, enough free disk space for the original files, a ZIP copy and split chunks, [Hugging Face CLI](https://huggingface.co/docs/huggingface_hub/guides/cli), and [GitHub CLI](https://cli.github.com/) authenticated with permission to publish Releases.
+This repository includes a **manually triggered GitHub Actions workflow**, so you can publish model weights without downloading them to your Mac:
+
+1. Open [Actions → Publish Qwen3.5-4B-Base weight chunks](https://github.com/caderea/qwen3.5-4b-weights/actions/workflows/publish-weights.yml).
+2. Click **Run workflow**, keep the default revision (`main`, which is resolved to a pinned model commit SHA), and choose release tag `qwen3.5-4b-base-v1`.
+3. The workflow streams model files from Hugging Face into ~1 GiB GitHub Release chunks without keeping a full copy of the model or ZIP. It verifies hashes and publishes the manifest and chunk assets.
+4. Check [Releases](https://github.com/caderea/qwen3.5-4b-weights/releases) to confirm successful publication.
+
+**Important:** GitHub-hosted runner disk limits, transfer failures, GitHub quotas, and asset upload errors can still prevent the publish. The workflow is manual to avoid unexpected large transfers. It refuses to overwrite an existing release. Verify the model's current upstream license and model card before making the public release.
+
+## Local fallback
+
+On a machine with considerably more free disk space, the older local workflow still works:
 
 ```bash
 python -m pip install -U huggingface_hub
 hf download Qwen/Qwen3.5-4B-Base --local-dir models/Qwen3.5-4B-Base
-
-# Include the exact upstream license and notice files in the downloaded snapshot.
 python scripts/weights.py pack models/Qwen3.5-4B-Base --out dist --chunk-mib 1024
-
-# Inspect dist/manifest.json and then publish the chunks.
-gh auth login
 gh release create qwen3.5-4b-base-v1 dist/manifest.json dist/*.part* \
   --repo caderea/qwen3.5-4b-weights \
-  --title 'Qwen3.5-4B-Base weights' \
-  --notes 'Unmodified model mirror; see upstream model card and Apache-2.0 license.'
+  --title 'Qwen3.5-4B-Base weights'
 ```
 
-**Do not use `git add` on the model weights, ZIP or chunks.** They belong to Release assets, not Git history. A publication should be based on one pinned upstream revision to avoid mixing snapshots.
+**Do not commit weights or chunks to Git history.** A release is required before the download command works.
 
 ## On another computer
 
@@ -52,5 +57,5 @@ The source code in this repository does **not** include the model weights. The b
 ## Notes
 
 - GitHub Release asset files must be smaller than 2 GiB. The default chunk size is 1 GiB.
-- This format temporarily uses extra disk space while packaging. For use on a machine with limited free disk space, download directly from Hugging Face instead.
+- The GitHub Actions streaming publisher stores only output chunks, not source model files or a complete ZIP. The local fallback consumes much more disk space.
 - It is often simpler to use `hf download Qwen/Qwen3.5-4B-Base` directly on each computer; this repository is for users who specifically want GitHub-based distribution.
