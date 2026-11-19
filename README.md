@@ -30,6 +30,32 @@ gh release create qwen3.5-4b-base-v1 dist/manifest.json dist/*.part* \
 
 **Do not commit weights or chunks to Git history.** A release is required before the download command works.
 
+## Kev-8B: base + adapter mirrors
+
+Kev-8B requires **two separate downloads**:
+
+| Release tag | Upstream | Required for Kev-8B |
+|---|---|---|
+| `kev-8b-base-v1` | [Qwen/Qwen3-8B-Base](https://huggingface.co/Qwen/Qwen3-8B-Base), pinned to Kev's `49e3418f` revision | Yes |
+| `kev-8b-adapter-v1` | [jaredpalmer/kev-8b](https://huggingface.co/jaredpalmer/kev-8b) | Yes |
+
+**To publish:** Open [Publish Kev-8B model weights](https://github.com/caderea/qwen3.5-4b-weights/actions/workflows/publish-kev-8b.yml), select **Run workflow**, and select `base`. When that run succeeds, repeat with `adapter`. This workflow streams uploads chunk-by-chunk, deleting the chunk after successful upload, to reduce runner disk consumption. The release is created as a draft and published after every chunk and the manifest have uploaded.
+
+**On other computers, after the releases exist:**
+
+```bash
+git clone https://github.com/caderea/qwen3.5-4b-weights.git
+cd qwen3.5-4b-weights
+python3 scripts/weights.py download --tag kev-8b-base-v1 --out ./models/Qwen3-8B-Base
+python3 scripts/weights.py download --tag kev-8b-adapter-v1 --out ./models/kev-8b
+```
+
+The `download` subcommand needs only Python 3 standard library, not `hf` or `torch`. Running Kev-8B requires the Kev runtime and dependencies separately.
+
+**Disk space:** The downloader retains part files in a shared cache and temporarily builds a full ZIP during restoration. Budget ample free disk space (well beyond the uncompressed weights), or change `--cache` to another disk. The streamer is optimized for the publishing runner, not the receiving machine.
+
+**Licensing:** Both upstream repositories indicate Apache-2.0. Preserve included license and attribution notices; each release includes the upstream model's files without weight modifications.
+
 ## On another computer
 
 ```bash
